@@ -1,0 +1,414 @@
+---
+title: "MGV"
+author: "Rotem Hadar"
+date: "`r Sys.Date()`"
+params:
+  DB: 21
+  cutoff: 2000
+format: pptx
+always_allow_html: true
+toc: true
+execute:
+  cache: true
+  warning: false
+  echo: false
+  message: false
+---
+
+```{r}
+# output:
+#   html_document:
+#   code_folding: hide
+
+# output: ioslides_presentation
+# output: html_document
+cutoff <- params$cutoff
+DB <- params$DB
+DBDB <- paste0("DB", DB)
+cohortmap <- "mgv.tsv"
+biom_path <- "/pita/pub/data/16S_DBs/processed/16S_DB1-21_merged/table.qza"
+library(tidyverse)
+library(qiime2R)
+library(gt)
+library(magrittr)
+library(microbiome)
+library(phyloseq)
+library(ggpubr)
+
+# knitr::opts_chunk(echo = F)
+# knitr::opts_chunk(warning = F)
+# knitr::opts_chunk(message = F)
+```
+
+```{r allMapAndBiom}
+#| code-fold: true
+cutoff <- 2e3
+map <- cohortmap |>  read_delim()
+map <- map |> filter(sample_ID |> str_detect("MGV"))
+
+# Filter out mislabeled sample
+map <- map |> filter(SampleID != "DB18.321")
+
+map$reads_number <- map$reads_number |> as.numeric() |> replace_na(0)
+
+map <- map |> mutate(gel = replace(gel, is.na(gel),  "h"))
+map <- map |> arrange(desc(reads_number)) |> 
+  mutate(duplicated = duplicated(sample_ID), abv_cutoff = reads_number > cutoff)
+map |> downloadthis::download_this(button_label = "Download mapping table"
+                                   , button_size = "large")
+map |> write_tsv("full_map.tsv")
+map <- map |> filter(duplicated == F) 
+```
+
+## Summary table after filtering duplication
+
+```{r summaryTable, echo=F, warning=FALSE, message=F}
+map |> group_by(time, gel) |> 
+  summarise(`Number of samples` = n(), Mean = reads_number |> mean()
+            , Median = reads_number |> median(), SD = sd(reads_number)) |>
+  gt::gt_preview()
+```
+
+## Reads number
+
+```{r, filtering, echo=F, warning=FALSE, message=F}
+below_cutoff <- map |> filter(abv_cutoff == F) |> filter(sample_ID |> str_detect("MGV\\d+-")) |> nrow()
+map <- map |> filter(abv_cutoff == T)
+# map <- map |> filter(!pnid %in% c("MGV11","MGV12"))
+# Samples below cutoff (`r  cutoff`): `r below_cutoff`."
+```
+
+```{r}
+# tt2 <- paste0("Samples below cutoff (", cutoff,"`): ", below_cutoff, ".")
+# tt <- c(tt1, tt2)
+```
+
+```{r, readsnumber, echo=F, warning=FALSE, message=F}
+#| fig-cap:
+#|   - "149 Unique samples after removing duplicates. 108/149 > 2000 reads. Above 50% of gel samples didn’t pass the threshold of reads. Versus 10-15% in the other groups."
+
+map  |> filter(sample_ID |> str_detect("MGV\\d+-")) |>
+  group_by(gel, time) |> mutate(length=n()) |> mutate(below = length-sum(abv_cutoff)) |> 
+  ggplot(aes(x = gel, y = reads_number, color = gel)) + 
+  geom_boxplot() + geom_jitter() + 
+    # gghighlight::gghighlight(reads_number > 2000)+
+  geom_hline(aes(yintercept = cutoff), color = "red", linetype = 2) + 
+  facet_wrap(~time, scales = "free_x") + 
+  ggsignif::geom_signif(comparisons = list(c("G", "N")), color = "black") + 
+  theme_classic() + 
+  geom_text(aes(x = gel, y = 2700, label = paste0("N=", length))
+            , color = "black", alpha = .2, size = 3) +
+  geom_text(aes(x = gel, y = -1000, label = paste0("N=", below))
+            , color = "gray60", alpha = .2, size = 3) + 
+  ggtitle("All samples") + labs(subtitle = "Samples below 2000 reads") + 
+  theme(plot.subtitle = element_text(color = "gray60"))
+```
+
+```{r, PPPP, echo=F, warning=FALSE, message=F, include=F}
+## Paired T test for reads number after filtrarion
+map |>  filter(gel != "h") |> filter(pnid != "MGV11") |> 
+  pivot_wider(id_cols = c(pnid, time), names_from = gel, values_from = reads_number) |> 
+  group_by(time) |> 
+  summarise(pval      = t.test(G, N, paired = T)$p.value, 
+            statistic = t.test(G, N, paired = T)$statistic) |> gt::gt_preview()
+```
+
+```{r, echo=F, warning=FALSE, message=F, include=FALSE}
+map  |> filter(sample_ID |> str_detect("MGV\\d+-")) |>
+    group_by(gel, time) |> mutate(length=n()) |> 
+  ggplot(aes(x = gel, y = reads_number, color = gel)) + 
+  geom_boxplot() + geom_jitter() + 
+  geom_hline(aes(yintercept = cutoff), color = "red", linetype = 2) + 
+  facet_wrap(~time, scales = "free_x") + 
+  ggsignif::geom_signif(comparisons = list(c("G", "N")), color = "red", 
+                        map_signif_level = T) + 
+  theme_classic() + 
+  theme(strip.background = element_rect(color = "red", fill = "pink")) + 
+  geom_text(aes(x = gel, y = 0, label = paste0("N=", length))
+            , color = "black", alpha = .2, size = 3)
+```
+
+```{r, PPPPP, echo=F, warning=FALSE, message=F, include = F}
+ map |>  filter(gel != "h") |> 
+  pivot_wider(id_cols = c(pnid, time), names_from = gel, values_from = reads_number) |> 
+  group_by(time) |> 
+  summarise(pval      = t.test(G, N, paired = T)$p.value, 
+            statistic = t.test(G, N, paired = T)$statistic) |> gt::gt_preview()
+```
+
+```{r, warning=FALSE, message=F, echo=FALSE}
+processed_library <-
+list.dirs("/pita/pub/data/16S_DBs/processed")[
+  list.dirs("/pita/pub/data/16S_DBs/processed") |> str_which(DB |> as.character())]
+
+# biom <- read_qza(file.path(processed_library, "table.qza"))$data |> data.frame()
+# biom <- read_q2biom("feature-table.biom") |> data.frame()
+
+biom <- read_qza("table2000.qza")$data |> data.frame()
+```
+
+```{r submapAndSubbiom, echo=F, warning=FALSE, message=F}
+submap <- map |> filter(reads_number > cutoff)
+subbiom <- biom |> select(intersect(submap$SampleID, biom |> colnames()))
+submap <- submap |> filter(SampleID %in% colnames(subbiom))
+subbiom <- subbiom[subbiom |> apply(1, sum) > 0,]
+
+# subbiom |> vegan::rarefy(MARGIN = 1, sample = cutoff) |>data.frame() |>  View()
+```
+
+```{r, warning=FALSE, message=F, echo = F}
+# reads <- data.frame(reads_number = biom |> apply(2, sum)) |> rownames_to_column("SampleID")
+# map |> pull(reads_number) |>  summary()
+# submap |> pull(reads_number) |>  summary()
+# submap |> filter(gel != "G") |> pull(reads_number) |>  summary()
+```
+
+```{r, echo=F, warning=FALSE, message=F}
+tree_path <- processed_library |> file.path("rooted-tree.qza")
+tree <- read_qza(tree_path)$data
+taxonomy_path <- processed_library |> file.path("taxonomy.qza")
+taxonomy <- read_qza(taxonomy_path)$data
+repseqs_path <- processed_library |> file.path("rep-seqs.qza")
+repseqs <- read_qza(repseqs_path)$data
+
+
+otu <- otu_table(subbiom, taxa_are_rows = T)
+names(otu) <- subbiom |> rownames()
+
+submap <- sample_data(submap)
+sample_names(submap) <- submap$SampleID
+
+tax <- tax_table(taxonomy)
+taxa_names(tax) <- taxonomy$Feature.ID
+
+exp <- phyloseq::phyloseq(submap, otu, tax, phy_tree(tree))
+```
+
+```{r, warning=FALSE, message=F, echo=FALSE}
+sample_data(exp) <- exp |> sample_data() |> data.frame() |> 
+  mutate(SampleID2 = SampleID) |> 
+  left_join(read_qza("faith2000.qza")$data |> rename(SampleID = V1, faith_pd = V2)
+            , by = "SampleID") |> 
+   column_to_rownames("SampleID2") |> sample_data()
+```
+
+```{r}
+# #| tbl-cap: "T test Paired alpha diversity for each group"
+tt <- 
+ exp |> sample_data() |> data.frame() |> filter(gel != "h") |> 
+  pivot_wider(id_cols = c(pnid, time), names_from = gel, values_from = faith_pd) |> 
+  group_by(time) |> 
+  summarise(pval      = t.test(G, N, paired = T)$p.value, 
+            statistic = t.test(G, N, paired = T)$statistic) |> 
+  ggtexttable(theme = ttheme("minimal"))
+```
+## Alpha diversity
+
+:::: {.columns}
+
+::: {.column width="80%"}
+
+```{r, warning=FALSE, message=F, echo=FALSE}
+#| fig-cap: "T test Paired alpha diversity for each group"
+give.n <- function(x){
+   return(c(y = mean(x), label = length(x)))
+}
+exp |> sample_data() |> data.frame() |>
+  group_by(gel, time) |> mutate(length=n()) |> 
+  # filter(time == 0) |> 
+  # filter(gel != "h") |> 
+  ggplot(aes(x = gel, y = faith_pd, color = gel)) + 
+  geom_boxplot() + 
+  geom_jitter() + 
+  ggsignif::geom_signif(
+    comparisons = list(c("G", "N")),
+    test = "t.test", test.args = list(paired = F),
+    step_increase = .1, color = "black", map_signif_level = T) + 
+  facet_wrap(~time, scales = "free_x") + 
+  theme_classic() + 
+     stat_summary(fun.data = give.n, geom = "text", color = "black", 
+                  position = position_dodge(width = 0.05))
+  # geom_text(aes(x = gel, y = 1, label = paste0("N=", length))
+  #           , color = "black", alpha = 1/6)
+```
+
+:::
+
+::: {.column width="20%"}
+
+```{r, warning=F, message=FALSE}
+#| fig-cap: "Since few samples from gel pass the filter of 2000 reads. there are Just few samples to calculate paured T test. "
+library(rstatix)
+
+pairs <- exp |> sample_data() |> data.frame() |> filter(gel != "h") |>
+  filter(pnid != "MGV11")
+  # rstatix::t_test(reads_number ~ gel, paired = T)
+
+pl2 <- pairs |> sample_data() |> data.frame() |> filter(gel != "h") |>
+  ggpaired(x = "gel", y = "faith_pd", order = c("N", "G"),
+            color = "gel", linetype = 2, palette = "aaas") +
+  facet_wrap(~time)
+
+gridExtra::grid.arrange(pl2, tt, nrow = 2, heights = c(80,20))
+```
+
+:::
+
+::::
+
+## PCoA
+```{r, echo=F, warning=FALSE, message=F}
+methods <- c("unifrac", "wunifrac", "jsd", "bray", "jaccard")
+methods <- c("unifrac", "jsd", "jaccard")
+
+for(method in methods){
+  ord <- phyloseq::ordinate(exp, method = "PCoA", distance = method)
+  pl <- ord$vectors |> data.frame() |>  select(paste0("Axis.",1:2)) |>
+    rownames_to_column("SampleID") |> 
+    left_join(exp |> sample_data() |> data.frame()
+              , by = "SampleID") |>
+    filter(!is.na(treatment)) |> 
+    mutate(Database = str_extract(SampleID, "....")) |> 
+    ggplot(aes(x = Axis.1, y = Axis.2, color = pnid, shape = Database)) + 
+    geom_point(size = 3) + theme_classic() + ggtitle(method)
+    print(pl)
+}
+```
+
+## Clustering
+
+```{r, echo=F, warning=FALSE, message=F}
+#| fig-cap: "K-means clustering for Axis 1 and 2, k = 3"
+set.seed(2022)
+distance = "jsd"
+ord <- phyloseq::ordinate(exp, method = "PCoA", distance = "jsd") |> 
+  extract("vectors") |> data.frame() |> 
+  select(1,2) 
+clustered <- kmeans(ord, centers = 3)$cluster
+
+pl1 <- ord |> cbind(clustered) |> cbind(exp |> sample_data() |> data.frame()) |> 
+  # rownames_to_column("SampleID")  |>
+  ggplot(aes(x = vectors.Axis.1, y = vectors.Axis.2
+             , color = clustered |> as.factor()
+             , shape = clustered |> as.factor())) + 
+    geom_point(size = 3) + theme_classic() + ggtitle("Distance metric: jsd")
+
+exp |> sample_data() <- exp |> sample_data() |> cbind(clustered)
+
+pl2 <- data.frame(clustered) |> 
+  group_by(clustered) |> summarise(n = n()) |> select(-clustered) |> 
+  ggtexttable(theme = ttheme("minimal"))
+
+gridExtra::grid.arrange(pl1, pl2, ncol = 2, widths = c(90, 10))
+```
+
+```{r, inferPackage, echo=FALSE, include=FALSE}
+library(infer)
+set.seed(2022)
+exp |> sample_data() |> data.frame() |> filter(gel != "h") |> 
+  # filter(time == 5) |> 
+  specify(response = faith_pd, explanatory = c(pnid, time, gel)) |> 
+  hypothesize(null = "independence") |> 
+  generate(reps = 1000, type = "bootstrap") 
+
+obs_mean <- exp |> sample_data() |> data.frame() |> filter(gel != "h") |> 
+  specify(response = faith_pd) |> calculate(stat = "mean")
+
+null_dist <- exp |> sample_data() |> data.frame() |> filter(gel != "h") 
+
+```
+
+```{r}
+# biomformat::write_biom(exp |> otu_table(), "project.biom")
+exp |> sample_data() |> data.frame() |> 
+  # rownames_to_column("SampleID") |>
+  mutate(Cohort = "MGV") |> write_tsv("project.tsv")
+```
+
+## Heatmap
+
+```{r,}
+library(reticulate)
+use_condaenv("seker")
+ca <- import("calour")
+
+
+ca_exp <- ca$read_qiime2("table.qza", "project.tsv"
+                         , min_reads = cutoff, normalize = 1e4)
+ca_exp <- ca_exp$filter_by_metadata("Cohort", list("MGV"))
+ca_exp <- ca_exp$cluster_features(10)
+ca_exp <- ca_exp$sort_by_metadata("pnid")
+ca_exp <- ca_exp$sort_by_metadata("time")
+ca_exp <- ca_exp$sort_by_metadata("gel")
+ca_exp <- ca_exp$sort_by_metadata("pnid")
+
+
+ca_exp$sample_metadata <- ca_exp$sample_metadata |> rownames_to_column("SampleID") |> 
+  mutate(Database = str_extract(SampleID, "....")) |> 
+  mutate(pnid = str_remove(pnid, "MGV"))
+
+pl <- ca_exp$plot(barx_fields = c("gel","time", "pnid"), gui = "jupyter")
+pl$save_figure("figure.png")
+knitr::include_graphics("figure.png")
+
+pl$save_figure("figure.png")
+knitr::include_graphics("figure.png")
+```
+
+## Heatmap ordered by cluster
+```{r}
+ca_exp$sample_metadata <- ca_exp$sample_metadata |> 
+  # rownames_to_column("SampleID") |> 
+  left_join(data.frame(clustered) |> rownames_to_column("SampleID"))
+ca_exp <- ca_exp$cluster_features(10)
+ca_exp <- ca_exp$sort_by_metadata("clustered")
+pl <- ca_exp$plot(barx_fields = c("clustered", "pnid", "time"), gui = "jupyter")
+pl$save_figure("cluster.png")
+knitr::include_graphics("cluster.png")
+```
+
+```{r, out.width = "900px"}
+ca_exp <- ca_exp$sort_by_metadata("gel")
+pl <- ca_exp$plot(barx_fields = c("gel","time", "pnid"), gui = "cli")
+pl$save_figure("fig1.png")
+knitr::include_graphics("fig1.png")
+```
+
+```{r, out.width = "900px"}
+ca_exp <- ca_exp$sort_by_metadata("Database")
+ca_exp <- ca_exp$sort_by_metadata("pnid")
+pl <- ca_exp$plot(barx_fields = c("Database", "pnid"), gui = "cli")
+pl$save_figure("fig2.png")
+knitr::include_graphics("fig2.png")
+
+dif <- ca_exp$diff_abundance(field = "Database", val1 = c("18", "21"),val2 = "h", random_seed = integer(5782), alpha = .5)
+```
+
+```{r, out.width = "900px"}
+dif <- ca_exp$diff_abundance(field = "gel", val1 = c("G", "N"),val2 = "h", random_seed = integer(5782), alpha = .5)
+dif <- dif$sort_by_metadata("gel")
+pl <- dif$plot(barx_fields = c("gel","time", "pnid"), gui = "cli")
+pl$save_figure("fig3.png")
+knitr::include_graphics("fig3.png")
+```
+
+```{r}
+# ca_exp$sample_metadata$time <- ca_exp$sample_metadata$time |> as.character()
+# dif <- ca_exp$diff_abundance(field = "time",val1 =  "5",val2 = "24", alpha = .8)
+# dif$plot(barx_fields = c("gel","time", "pnid"))
+
+```
+
+```{r, include=F}
+exp@otu_table |> data.frame() |> 
+  rownames_to_column("ASV") |>
+  pivot_longer(-ASV) |> 
+  group_by(name) |> mutate(RA = value/(sum(value))) |> ungroup() |> 
+  group_by(ASV) |> summarise(RA = mean(RA)) |> arrange(RA |> desc()) |> 
+  slice_head(n = 4) |> pull(ASV)
+```
+
+
+
+
+
