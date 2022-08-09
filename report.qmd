@@ -1,11 +1,13 @@
 ---
 title: "MGV"
+subtitle: "https://github.com/baobabprince/MGV"
 author: "Rotem Hadar"
 date: "`r Sys.Date()`"
 params:
   DB: 21
   cutoff: 2000
 format: pptx
+repo-url: https://github.com/baobabprince/MGV.git
 always_allow_html: true
 number-sections: true
 toc: true
@@ -80,14 +82,13 @@ map <- map |> filter(abv_cutoff == T)
 ```
 
 ```{r}
-# tt2 <- paste0("Samples below cutoff (", cutoff,"`): ", below_cutoff, ".")
-# tt <- c(tt1, tt2)
+tt1 <- "149 Unique samples after removing duplicates. 108/149 > 2000 reads. Above 50% of gel samples didn’t pass the threshold of reads. Versus 10-15% in the other groups."
+tt2 <- paste0("Samples below cutoff (", cutoff,"`): ", below_cutoff, ".")
+tt <- paste(tt1, tt2)
 ```
 
-```{r, readsnumber, echo=F, warning=FALSE, message=F}
-#| fig-cap:
-#|   - "149 Unique samples after removing duplicates. 108/149 > 2000 reads. Above 50% of gel samples didn’t pass the threshold of reads. Versus 10-15% in the other groups."
-
+```{r, readsnumber}
+#| fig-cap: !expr print(tt)
 map  |> filter(sample_ID |> str_detect("MGV\\d+-")) |>
   group_by(gel, time) |> mutate(length=n()) |> mutate(below = length-sum(abv_cutoff)) |> 
   ggplot(aes(x = gel, y = reads_number, color = gel)) + 
@@ -238,7 +239,7 @@ exp |> sample_data() |> data.frame() |>
 ::: {.column width="20%"}
 
 ```{r, warning=F, message=FALSE}
-#| fig-cap: "Since few samples from gel pass the filter of 2000 reads. there are Just few samples to calculate paured T test. "
+#| fig-cap: "Since few samples from gel pass the filter of 2000 reads. there are Just few samples to calculate paired T test. "
 library(rstatix)
 
 pairs <- exp |> sample_data() |> data.frame() |> filter(gel != "h") |>
