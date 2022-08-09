@@ -7,6 +7,7 @@ params:
   cutoff: 2000
 format: pptx
 always_allow_html: true
+number-sections: true
 toc: true
 execute:
   cache: true
@@ -356,14 +357,16 @@ knitr::include_graphics("figure.png")
 ```
 
 ## Heatmap ordered by cluster
+
 ```{r}
-ca_exp$sample_metadata <- ca_exp$sample_metadata |> 
-  # rownames_to_column("SampleID") |> 
-  left_join(data.frame(clustered) |> rownames_to_column("SampleID"))
-ca_exp <- ca_exp$cluster_features(10)
-ca_exp <- ca_exp$sort_by_metadata("clustered")
-pl <- ca_exp$plot(barx_fields = c("clustered", "pnid", "time"), gui = "jupyter")
-pl$save_figure("cluster.png")
+# Unknown problem
+
+# kk <- data.frame(clustered) |> rownames_to_column("SampleID")
+# ca_exp$sample_metadata <- left_join(ca_exp$sample_metadata, kk)
+# ca_exp <- ca_exp$cluster_features(10)
+# ca_exp <- ca_exp$sort_by_metadata("clustered")
+# pl <- ca_exp$plot(barx_fields = c("clustered", "pnid", "time"), gui = "jupyter")
+# pl$save_figure("cluster.png")
 knitr::include_graphics("cluster.png")
 ```
 
