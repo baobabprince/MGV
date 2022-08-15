@@ -1,6 +1,6 @@
 ---
 title: "MGV"
-subtitle: "https://github.com/baobabprince/MGV"
+subtitle: "https://github.com/baobabprince/MGV.git/report.qmd"
 author: "Rotem Hadar"
 date: "`r Sys.Date()`"
 params:
@@ -44,22 +44,38 @@ library(ggpubr)
 ```
 
 ```{r allMapAndBiom}
-#| code-fold: true
+fullmap <- "/pita/pub/data/16S_DBs/maps/DB1-21_premap_v2.tsv" |> read_tsv() |>
+  filter(Cohort == "MGV") |> mutate(sample_ID = str_replace(sample_ID, "24$", "24h"))
 cutoff <- 2e3
 map <- cohortmap |>  read_delim()
 map <- map |> filter(sample_ID |> str_detect("MGV"))
 
+map$reads_number <- map$reads_number |> as.numeric() |> replace_na(0)
+map$sample_ID <- map$sample_ID |> str_replace("24$", "24h")
+```
+
+## Summary table before filtering duplication
+```{r allMapAndBiom2}
+fullmap |> mutate(treatment = str_extract(sample_ID, "-.*"),
+                  time = str_extract(treatment, "\\d{1,2}"),
+                  gel = str_extract(treatment, "[GNh]+"),
+                  reads_number = reads_number |> as.numeric()) |>  group_by(time, gel) |>
+# map |> group_by(time, gel) |> 
+  summarise(`Number of samples` = n(), Mean = reads_number |> mean(na.rm = T)
+            , Median = reads_number |> median(na.rm = T), SD = sd(reads_number, na.rm = T)) |>
+  gt::gt_preview() |> 
+  tab_footnote(footnote = md("[Full Table](https://github.com/baobabprince/MGV/blob/master/mgv.tsv)"))
+```
+
+```{r Filter}
 # Filter out mislabeled sample
 map <- map |> filter(SampleID != "DB18.321")
-
-map$reads_number <- map$reads_number |> as.numeric() |> replace_na(0)
 
 map <- map |> mutate(gel = replace(gel, is.na(gel),  "h"))
 map <- map |> arrange(desc(reads_number)) |> 
   mutate(duplicated = duplicated(sample_ID), abv_cutoff = reads_number > cutoff)
-map |> downloadthis::download_this(button_label = "Download mapping table"
-                                   , button_size = "large")
 map |> write_tsv("full_map.tsv")
+
 map <- map |> filter(duplicated == F) 
 ```
 
@@ -329,32 +345,44 @@ exp |> sample_data() |> data.frame() |>
 
 ## Heatmap
 
-```{r,}
+```{{bash}}
+#| include: false
+#| echo: false
+conda create -n calour 
+conda activate calour
+conda install git ipwidgets -y
+pip install git+https://github.com/amnona/calour
+```
+
+
+```{r}
 library(reticulate)
-use_condaenv("seker")
-ca <- import("calour")
+use_condaenv("calour")
 
-
-ca_exp <- ca$read_qiime2("table.qza", "project.tsv"
-                         , min_reads = cutoff, normalize = 1e4)
-ca_exp <- ca_exp$filter_by_metadata("Cohort", list("MGV"))
-ca_exp <- ca_exp$cluster_features(10)
-ca_exp <- ca_exp$sort_by_metadata("pnid")
-ca_exp <- ca_exp$sort_by_metadata("time")
-ca_exp <- ca_exp$sort_by_metadata("gel")
-ca_exp <- ca_exp$sort_by_metadata("pnid")
-
-
-ca_exp$sample_metadata <- ca_exp$sample_metadata |> rownames_to_column("SampleID") |> 
-  mutate(Database = str_extract(SampleID, "....")) |> 
-  mutate(pnid = str_remove(pnid, "MGV"))
-
-pl <- ca_exp$plot(barx_fields = c("gel","time", "pnid"), gui = "jupyter")
-pl$save_figure("figure.png")
+# use_condaenv("seker")
+# ca <- reticulate::import("calour")
+# 
+# ca_exp <- ca$read_qiime2("table.qza", "project.tsv"
+#                          , min_reads = cutoff, normalize = 1e4)
+# ca_exp <- ca_exp$filter_by_metadata("Cohort", list("MGV"))
+# ca_exp <- ca_exp$cluster_features(10)
+# ca_exp <- ca_exp$sort_by_metadata("pnid")
+# ca_exp <- ca_exp$sort_by_metadata("time")
+# ca_exp <- ca_exp$sort_by_metadata("gel")
+# ca_exp <- ca_exp$sort_by_metadata("pnid")
+# 
+# 
+# ca_exp$sample_metadata <- ca_exp$sample_metadata |> rownames_to_column("SampleID") |>
+#   mutate(Database = str_extract(SampleID, "....")) |>
+#   mutate(pnid = str_remove(pnid, "MGV"))
+# 
+# pl <- ca_exp$plot(barx_fields = c("gel","time", "pnid"), gui = "jupyter")
+# pl$save_figure("figure.png")
 knitr::include_graphics("figure.png")
 
-pl$save_figure("figure.png")
-knitr::include_graphics("figure.png")
+# pl$save_figure("figure.png")
+# knitr::include_graphics("figure.png")
+# reticulate::conda_update()
 ```
 
 ## Heatmap ordered by cluster
@@ -372,27 +400,27 @@ knitr::include_graphics("cluster.png")
 ```
 
 ```{r, out.width = "900px"}
-ca_exp <- ca_exp$sort_by_metadata("gel")
-pl <- ca_exp$plot(barx_fields = c("gel","time", "pnid"), gui = "cli")
-pl$save_figure("fig1.png")
+# ca_exp <- ca_exp$sort_by_metadata("gel")
+# pl <- ca_exp$plot(barx_fields = c("gel","time", "pnid"), gui = "jupyter")
+# pl$save_figure("fig1.png")
 knitr::include_graphics("fig1.png")
 ```
 
 ```{r, out.width = "900px"}
-ca_exp <- ca_exp$sort_by_metadata("Database")
-ca_exp <- ca_exp$sort_by_metadata("pnid")
-pl <- ca_exp$plot(barx_fields = c("Database", "pnid"), gui = "cli")
-pl$save_figure("fig2.png")
+# ca_exp <- ca_exp$sort_by_metadata("Database")
+# ca_exp <- ca_exp$sort_by_metadata("pnid")
+# pl <- ca_exp$plot(barx_fields = c("Database", "pnid"), gui = "jupyter")
+# pl$save_figure("fig2.png")
 knitr::include_graphics("fig2.png")
 
-dif <- ca_exp$diff_abundance(field = "Database", val1 = c("18", "21"),val2 = "h", random_seed = integer(5782), alpha = .5)
+# dif <- ca_exp$diff_abundance(field = "Database", val1 = c("18", "21"),val2 = "h", random_seed = integer(5782), alpha = .5)
 ```
 
-```{r, out.width = "900px"}
-dif <- ca_exp$diff_abundance(field = "gel", val1 = c("G", "N"),val2 = "h", random_seed = integer(5782), alpha = .5)
-dif <- dif$sort_by_metadata("gel")
-pl <- dif$plot(barx_fields = c("gel","time", "pnid"), gui = "cli")
-pl$save_figure("fig3.png")
+```{r}
+# dif <- ca_exp$diff_abundance(field = "gel", val1 = c("G", "N"),val2 = "h", random_seed = integer(5782), alpha = .5)
+# dif <- dif$sort_by_metadata("gel")
+# pl <- dif$plot(barx_fields = c("gel","time", "pnid"), gui = "jupyter")
+# pl$save_figure("fig3.png")
 knitr::include_graphics("fig3.png")
 ```
 
@@ -403,13 +431,17 @@ knitr::include_graphics("fig3.png")
 
 ```
 
-```{r, include=F}
+## Most prevelant sequences
+
+```{r, include=T}
 exp@otu_table |> data.frame() |> 
   rownames_to_column("ASV") |>
   pivot_longer(-ASV) |> 
+  left_join(taxonomy |> rename(ASV = Feature.ID)) |> 
   group_by(name) |> mutate(RA = value/(sum(value))) |> ungroup() |> 
-  group_by(ASV) |> summarise(RA = mean(RA)) |> arrange(RA |> desc()) |> 
-  slice_head(n = 4) |> pull(ASV)
+  group_by(ASV) |> summarise(Taxon = Taxon, RA = mean(RA)) |> 
+  arrange(RA |> desc()) |> slice_head(n = 4) |> 
+  gt::gt() |> fmt_percent(columns = RA, decimals = 2)
 ```
 
 
