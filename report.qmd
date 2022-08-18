@@ -10,7 +10,6 @@ format: pptx
 repo-url: https://github.com/baobabprince/MGV.git
 always_allow_html: true
 number-sections: true
-toc: true
 execute:
   cache: true
   warning: false
@@ -52,6 +51,9 @@ map <- map |> filter(sample_ID |> str_detect("MGV"))
 
 map$reads_number <- map$reads_number |> as.numeric() |> replace_na(0)
 map$sample_ID <- map$sample_ID |> str_replace("24$", "24h")
+map$gel <- map$gel |> str_replace("G", "True") |> str_replace("N", 'False') |> 
+  str_replace("h", 'After 24 hours')
+
 ```
 
 ## Summary table before filtering duplication
@@ -89,10 +91,8 @@ map |> group_by(time, gel) |>
 ```
 
 ## Reads number
-
 ```{r, filtering, echo=F, warning=FALSE, message=F}
 below_cutoff <- map |> filter(abv_cutoff == F) |> filter(sample_ID |> str_detect("MGV\\d+-")) |> nrow()
-map <- map |> filter(abv_cutoff == T)
 # map <- map |> filter(!pnid %in% c("MGV11","MGV12"))
 # Samples below cutoff (`r  cutoff`): `r below_cutoff`."
 ```
@@ -120,15 +120,16 @@ map  |> filter(sample_ID |> str_detect("MGV\\d+-")) |>
             , color = "gray60", alpha = .2, size = 3) + 
   ggtitle("All samples") + labs(subtitle = "Samples below 2000 reads") + 
   theme(plot.subtitle = element_text(color = "gray60"))
+map <- map |> filter(abv_cutoff == T)
 ```
 
 ```{r, PPPP, echo=F, warning=FALSE, message=F, include=F}
 ## Paired T test for reads number after filtrarion
-map |>  filter(gel != "h") |> filter(pnid != "MGV11") |> 
-  pivot_wider(id_cols = c(pnid, time), names_from = gel, values_from = reads_number) |> 
-  group_by(time) |> 
-  summarise(pval      = t.test(G, N, paired = T)$p.value, 
-            statistic = t.test(G, N, paired = T)$statistic) |> gt::gt_preview()
+# map |>  filter(sample_ID |>  str_detect("h", negate = T)) |> filter(pnid != "MGV11") |> 
+#   pivot_wider(id_cols = c(pnid, time), names_from = gel, values_from = reads_number) |> 
+#   group_by(time) |> 
+#   summarise(pval      = t.test(True, False, paired = T)$p.value, 
+#             statistic = t.test(True, False, paired = T)$statistic) |> gt::gt_preview()
 ```
 
 ```{r, echo=F, warning=FALSE, message=F, include=FALSE}
@@ -138,7 +139,7 @@ map  |> filter(sample_ID |> str_detect("MGV\\d+-")) |>
   geom_boxplot() + geom_jitter() + 
   geom_hline(aes(yintercept = cutoff), color = "red", linetype = 2) + 
   facet_wrap(~time, scales = "free_x") + 
-  ggsignif::geom_signif(comparisons = list(c("G", "N")), color = "red", 
+  ggsignif::geom_signif(comparisons = list(c("True", "False")), color = "red", 
                         map_signif_level = T) + 
   theme_classic() + 
   theme(strip.background = element_rect(color = "red", fill = "pink")) + 
@@ -147,17 +148,16 @@ map  |> filter(sample_ID |> str_detect("MGV\\d+-")) |>
 ```
 
 ```{r, PPPPP, echo=F, warning=FALSE, message=F, include = F}
- map |>  filter(gel != "h") |> 
-  pivot_wider(id_cols = c(pnid, time), names_from = gel, values_from = reads_number) |> 
-  group_by(time) |> 
-  summarise(pval      = t.test(G, N, paired = T)$p.value, 
-            statistic = t.test(G, N, paired = T)$statistic) |> gt::gt_preview()
+ # map |>  filter(sample_ID |>  str_detect("h", negate = T)) |> 
+ #  pivot_wider(id_cols = c(pnid, time), names_from = gel, values_from = reads_number) |> 
+ #  group_by(time) |> 
+ #  summarise(pval      = t.test(True, False, paired = T)$p.value, 
+ #            statistic = t.test(True, False, paired = T)$statistic) |> gt::gt_preview()
 ```
 
 ```{r, warning=FALSE, message=F, echo=FALSE}
 processed_library <-
-list.dirs("/pita/pub/data/16S_DBs/processed")[
-  list.dirs("/pita/pub/data/16S_DBs/processed") |> str_which(DB |> as.character())]
+list.dirs("/pita/pub/data/16S_DBs/processed/16S_DB1-21_merged/")
 
 # biom <- read_qza(file.path(processed_library, "table.qza"))$data |> data.frame()
 # biom <- read_q2biom("feature-table.biom") |> data.frame()
@@ -211,20 +211,17 @@ sample_data(exp) <- exp |> sample_data() |> data.frame() |>
 ```
 
 ```{r}
-# #| tbl-cap: "T test Paired alpha diversity for each group"
-tt <- 
- exp |> sample_data() |> data.frame() |> filter(gel != "h") |> 
-  pivot_wider(id_cols = c(pnid, time), names_from = gel, values_from = faith_pd) |> 
-  group_by(time) |> 
-  summarise(pval      = t.test(G, N, paired = T)$p.value, 
-            statistic = t.test(G, N, paired = T)$statistic) |> 
-  ggtexttable(theme = ttheme("minimal"))
+# #| tbl-cap: "T test Paired alpha diversity for sampling type"
+# tt <- 
+#  exp |> sample_data() |> data.frame() |> filter(sample_ID |> str_detect("h", negate = T)) |> 
+#   pivot_wider(id_cols = c(pnid, time), names_from = gel, values_from = faith_pd) |> 
+#   group_by(time) |> 
+#   summarise(pval      = t.test("True", "False", paired = T)$p.value, 
+#             statistic = t.test(True, False, paired = T)$statistic) |> 
+#   ggtexttable(theme = ttheme("minimal"))
 ```
+
 ## Alpha diversity
-
-:::: {.columns}
-
-::: {.column width="80%"}
 
 ```{r, warning=FALSE, message=F, echo=FALSE}
 #| fig-cap: "T test Paired alpha diversity for each group"
@@ -250,11 +247,8 @@ exp |> sample_data() |> data.frame() |>
   #           , color = "black", alpha = 1/6)
 ```
 
-:::
 
-::: {.column width="20%"}
-
-```{r, warning=F, message=FALSE}
+```{r, warning=F, message=FALSE, include=FALSE}
 #| fig-cap: "Since few samples from gel pass the filter of 2000 reads. there are Just few samples to calculate paired T test. "
 library(rstatix)
 
@@ -270,14 +264,10 @@ pl2 <- pairs |> sample_data() |> data.frame() |> filter(gel != "h") |>
 gridExtra::grid.arrange(pl2, tt, nrow = 2, heights = c(80,20))
 ```
 
-:::
-
-::::
-
-## PCoA
+## PCoA - unweighted unifrac
 ```{r, echo=F, warning=FALSE, message=F}
 methods <- c("unifrac", "wunifrac", "jsd", "bray", "jaccard")
-methods <- c("unifrac", "jsd", "jaccard")
+# methods <- c("unifrac", "jsd")
 
 for(method in methods){
   ord <- phyloseq::ordinate(exp, method = "PCoA", distance = method)
@@ -293,23 +283,26 @@ for(method in methods){
 }
 ```
 
-## Clustering
+## Clustering by microbial population resulted 3 main clusters
 
 ```{r, echo=F, warning=FALSE, message=F}
 #| fig-cap: "K-means clustering for Axis 1 and 2, k = 3"
+library(ggforce)
 set.seed(2022)
-distance = "jsd"
+distance = "bray"
 ord <- phyloseq::ordinate(exp, method = "PCoA", distance = "jsd") |> 
   extract("vectors") |> data.frame() |> 
   select(1,2) 
-clustered <- kmeans(ord, centers = 3)$cluster
+clustered <- kmeans(ord, centers = 3)$cluster 
 
-pl1 <- ord |> cbind(clustered) |> cbind(exp |> sample_data() |> data.frame()) |> 
+pl1 <- ord |> cbind(clustered) |> 
+  # cbind(exp |> sample_data() |> data.frame()) |>
   # rownames_to_column("SampleID")  |>
   ggplot(aes(x = vectors.Axis.1, y = vectors.Axis.2
              , color = clustered |> as.factor()
              , shape = clustered |> as.factor())) + 
-    geom_point(size = 3) + theme_classic() + ggtitle("Distance metric: jsd")
+    geom_point(size = 3) + theme_classic() + ggtitle("Distance metric: bray") + 
+  geom_mark_ellipse(aes(color = clustered |> as.factor()), expand = unit(0.5,"mm"),)
 
 exp |> sample_data() <- exp |> sample_data() |> cbind(clustered)
 
@@ -344,16 +337,6 @@ exp |> sample_data() |> data.frame() |>
 ```
 
 ## Heatmap
-
-```{{bash}}
-#| include: false
-#| echo: false
-conda create -n calour 
-conda activate calour
-conda install git ipwidgets -y
-pip install git+https://github.com/amnona/calour
-```
-
 
 ```{r}
 library(reticulate)
@@ -416,7 +399,7 @@ knitr::include_graphics("fig2.png")
 # dif <- ca_exp$diff_abundance(field = "Database", val1 = c("18", "21"),val2 = "h", random_seed = integer(5782), alpha = .5)
 ```
 
-```{r}
+```{r, include=FALSE}
 # dif <- ca_exp$diff_abundance(field = "gel", val1 = c("G", "N"),val2 = "h", random_seed = integer(5782), alpha = .5)
 # dif <- dif$sort_by_metadata("gel")
 # pl <- dif$plot(barx_fields = c("gel","time", "pnid"), gui = "jupyter")
@@ -433,18 +416,33 @@ knitr::include_graphics("fig3.png")
 
 ## Most prevelant sequences
 
-```{r, include=T}
-exp@otu_table |> data.frame() |> 
-  rownames_to_column("ASV") |>
-  pivot_longer(-ASV) |> 
-  left_join(taxonomy |> rename(ASV = Feature.ID)) |> 
-  group_by(name) |> mutate(RA = value/(sum(value))) |> ungroup() |> 
-  group_by(ASV) |> summarise(Taxon = Taxon, RA = mean(RA)) |> 
-  arrange(RA |> desc()) |> slice_head(n = 4) |> 
-  gt::gt() |> fmt_percent(columns = RA, decimals = 2)
+```{r, include=F}
+# ord |> cbind(clustered) |> rownames_to_column("name")
+# 
+# exp@otu_table |> data.frame() |> 
+#   rownames_to_column("ASV") |>
+#   pivot_longer(-ASV) |> 
+#   left_join(taxonomy |> rename(ASV = Feature.ID)) |> 
+#   left_join(ord |> cbind(clustered) |> rownames_to_column("name")) |> 
+#   group_by(clustered) |> mutate(RA = value/(sum(value)), clustered = clustered) |> ungroup() |> 
+#   group_by(clustered) |> arrange(desc(RA)) |> slice_head(n=2)
+#   group_by(ASV) |> summarise(Taxon = Taxon, RA = mean(RA))
+  # arrange(RA |> desc()) |> slice_head(n = 4) |> 
+  # gt::gt() |> fmt_percent(columns = RA, decimals = 2)
 ```
 
 
 
+```{r, tbl.width ="180%"}
+exp@otu_table |> data.frame() |> 
+  rownames_to_column("ASV") |>
+  pivot_longer(-ASV) |> 
+  left_join(taxonomy |> rename(ASV = Feature.ID)) |> 
+  left_join(ord |> cbind(clustered) |> rownames_to_column("name")) |> 
+  group_by(clustered) |> 
+  summarise(ASV = ASV, Taxon = Taxon, RA = value/sum(value)) |> 
+  arrange(desc(RA)) |> slice_head(n = 5) |> ungroup() |> 
+  gt::gt(rowname_col = F) |> fmt_percent(columns = RA, decimals = 2)
+```
 
 
