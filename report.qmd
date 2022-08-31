@@ -332,6 +332,7 @@ null_dist <- exp |> sample_data() |> data.frame() |> filter(gel != "h")
 ```{r}
 # biomformat::write_biom(exp |> otu_table(), "project.biom")
 exp |> sample_data() |> data.frame() |> 
+  left_join(data.frame(clustered) |> rownames_to_column("SampleID")) |> 
   # rownames_to_column("SampleID") |>
   mutate(Cohort = "MGV") |> write_tsv("project.tsv")
 ```
@@ -339,8 +340,8 @@ exp |> sample_data() |> data.frame() |>
 ## Heatmap
 
 ```{r}
-library(reticulate)
-use_condaenv("calour")
+# library(reticulate)
+# use_condaenv("calour")
 
 # use_condaenv("seker")
 # ca <- reticulate::import("calour")
@@ -368,11 +369,13 @@ knitr::include_graphics("figure.png")
 # reticulate::conda_update()
 ```
 
+```{bash}
+/home/rstudio/anaconda3/envs/seker/bin/python recreate_some_heatmaps.py
+```
+
 ## Heatmap ordered by cluster
 
 ```{r}
-# Unknown problem
-
 # kk <- data.frame(clustered) |> rownames_to_column("SampleID")
 # ca_exp$sample_metadata <- left_join(ca_exp$sample_metadata, kk)
 # ca_exp <- ca_exp$cluster_features(10)
@@ -441,7 +444,7 @@ exp@otu_table |> data.frame() |>
   left_join(ord |> cbind(clustered) |> rownames_to_column("name")) |> 
   group_by(clustered) |> 
   summarise(ASV = ASV, Taxon = Taxon, RA = value/sum(value)) |> 
-  arrange(desc(RA)) |> slice_head(n = 5) |> ungroup() |> 
+  arrange(desc(RA)) |> slice_head(n = 5) |> ungroup() |> distinct(ASV, .keep_all = T) |> 
   gt::gt(rowname_col = F) |> fmt_percent(columns = RA, decimals = 2)
 ```
 
