@@ -6,7 +6,7 @@ date: "`r Sys.Date()`"
 params:
   DB: 21
   cutoff: 2000
-format: pptx
+format: html
 repo-url: https://github.com/baobabprince/MGV.git
 always_allow_html: true
 number-sections: true
@@ -51,13 +51,13 @@ map <- map |> filter(sample_ID |> str_detect("MGV"))
 
 map$reads_number <- map$reads_number |> as.numeric() |> replace_na(0)
 map$sample_ID <- map$sample_ID |> str_replace("24$", "24h")
-map$gel <- map$gel |> str_replace("G", "True") |> str_replace("N", 'False') |> 
-  str_replace("h", 'After 24 hours')
+map$gel <- map$gel |> str_replace("G", "True") |> str_replace("N", 'False') 
+map <- map |> mutate(gel = replace(gel, is.na(gel),  "h") |> str_replace("h", 'After 24 hours')) 
 
 ```
 
 ## Summary table before filtering duplication
-```{r allMapAndBiom2}
+```{r allMapAndBiom2, include=T}
 fullmap |> mutate(treatment = str_extract(sample_ID, "-.*"),
                   time = str_extract(treatment, "\\d{1,2}"),
                   gel = str_extract(treatment, "[GNh]+"),
@@ -67,13 +67,15 @@ fullmap |> mutate(treatment = str_extract(sample_ID, "-.*"),
             , Median = reads_number |> median(na.rm = T), SD = sd(reads_number, na.rm = T)) |>
   gt::gt_preview() |> 
   tab_footnote(footnote = md("[Full Table](https://github.com/baobabprince/MGV/blob/master/mgv.tsv)"))
+ # pivot_longer()
+ 
 ```
 
-```{r Filter}
+```{r, Filter}
 # Filter out mislabeled sample
 map <- map |> filter(SampleID != "DB18.321")
 
-map <- map |> mutate(gel = replace(gel, is.na(gel),  "h"))
+# map <- map |> mutate(gel = replace(gel, is.na(gel),  "h"))
 map <- map |> arrange(desc(reads_number)) |> 
   mutate(duplicated = duplicated(sample_ID), abv_cutoff = reads_number > cutoff)
 map |> write_tsv("full_map.tsv")
@@ -84,10 +86,19 @@ map <- map |> filter(duplicated == F)
 ## Summary table after filtering duplication
 
 ```{r summaryTable, echo=F, warning=FALSE, message=F}
-map |> group_by(time, gel) |> 
+map |> filter(!is.na(time)) |> 
+  group_by(time, gel) |> 
   summarise(`Number of samples` = n(), Mean = reads_number |> mean()
             , Median = reads_number |> median(), SD = sd(reads_number)) |>
-  gt::gt_preview()
+  gt_preview() |> 
+  tab_footnote(footnote = md("[Full Table](https://github.com/baobabprince/MGV/blob/master/mgv.tsv)"))
+
+
+# map |> group_by(gel, time) |>
+#   summarise(`Number of samples` = n(), Mean = reads_number |> mean()
+#             , Median = reads_number |> median(), SD = sd(reads_number)) |>
+#   gt::gt_preview()
+
 ```
 
 ## Reads number
@@ -95,6 +106,32 @@ map |> group_by(time, gel) |>
 below_cutoff <- map |> filter(abv_cutoff == F) |> filter(sample_ID |> str_detect("MGV\\d+-")) |> nrow()
 # map <- map |> filter(!pnid %in% c("MGV11","MGV12"))
 # Samples below cutoff (`r  cutoff`): `r below_cutoff`."
+```
+
+### Summary statistics
+
+```{r, PPPP, echo=F, warning=FALSE, message=F, include=T}
+# Paired T test for reads number before filtrarion
+map |>  
+  filter(sample_ID |>  str_detect("h", negate = T)) |> filter(pnid != "MGV11") |>
+  pivot_wider(id_cols = c(pnid, time), names_from = gel, values_from = reads_number) |>
+  group_by(time) |> filter(!is.na(False)) |> filter(!is.na(True)) |>  
+  summarise(pval      = t.test(True, False, paired = T)$p.value,
+            statistic = t.test(True, False, paired = T)$statistic, 
+            mean = mean(c(True, False)), 
+            sd = sd(c(True, False))) |>
+  gt::gt() |> tab_header("Paired P-values gels Vs. No gel")
+
+
+map |>  
+  filter(sample_ID |>  str_detect("h", negate = T)) |> filter(pnid != "MGV11") |>
+  pivot_wider(id_cols = c(pnid, gel), names_from = time, values_from = reads_number) |>
+  group_by(gel) |> filter(!is.na(`0`)) |> filter(!is.na(`5`)) |>  
+  summarise(pval      = t.test(`0`, `5`, paired = T)$p.value,
+            statistic = t.test(`0`, `5`, paired = T)$statistic, 
+            mean = mean(c(`0`, `5`)), sd = sd(`0`, `5`)) |> 
+    gt::gt() |> tab_header("Paired P-values Immediate freeze Vs. 5 hours delay")
+
 ```
 
 ```{r}
@@ -111,8 +148,9 @@ map  |> filter(sample_ID |> str_detect("MGV\\d+-")) |>
   geom_boxplot() + geom_jitter() + 
     # gghighlight::gghighlight(reads_number > 2000)+
   geom_hline(aes(yintercept = cutoff), color = "red", linetype = 2) + 
-  facet_wrap(~time, scales = "free_x") + 
-  ggsignif::geom_signif(comparisons = list(c("G", "N")), color = "black") + 
+  facet_grid(~time, scales = "free_x", space = "free") + 
+  ggsignif::geom_signif(comparisons = list(c("True", "False"))
+                        , color = "black", map_signif_level = T, test = "t.test") + 
   theme_classic() + 
   geom_text(aes(x = gel, y = 2700, label = paste0("N=", length))
             , color = "black", alpha = .2, size = 3) +
@@ -123,15 +161,6 @@ map  |> filter(sample_ID |> str_detect("MGV\\d+-")) |>
 map <- map |> filter(abv_cutoff == T)
 ```
 
-```{r, PPPP, echo=F, warning=FALSE, message=F, include=F}
-## Paired T test for reads number after filtrarion
-# map |>  filter(sample_ID |>  str_detect("h", negate = T)) |> filter(pnid != "MGV11") |> 
-#   pivot_wider(id_cols = c(pnid, time), names_from = gel, values_from = reads_number) |> 
-#   group_by(time) |> 
-#   summarise(pval      = t.test(True, False, paired = T)$p.value, 
-#             statistic = t.test(True, False, paired = T)$statistic) |> gt::gt_preview()
-```
-
 ```{r, echo=F, warning=FALSE, message=F, include=FALSE}
 map  |> filter(sample_ID |> str_detect("MGV\\d+-")) |>
     group_by(gel, time) |> mutate(length=n()) |> 
@@ -140,7 +169,7 @@ map  |> filter(sample_ID |> str_detect("MGV\\d+-")) |>
   geom_hline(aes(yintercept = cutoff), color = "red", linetype = 2) + 
   facet_wrap(~time, scales = "free_x") + 
   ggsignif::geom_signif(comparisons = list(c("True", "False")), color = "red", 
-                        map_signif_level = T) + 
+                        map_signif_level = F) + 
   theme_classic() + 
   theme(strip.background = element_rect(color = "red", fill = "pink")) + 
   geom_text(aes(x = gel, y = 0, label = paste0("N=", length))
@@ -210,7 +239,7 @@ sample_data(exp) <- exp |> sample_data() |> data.frame() |>
    column_to_rownames("SampleID2") |> sample_data()
 ```
 
-```{r}
+```{r, include=F}
 # #| tbl-cap: "T test Paired alpha diversity for sampling type"
 # tt <- 
 #  exp |> sample_data() |> data.frame() |> filter(sample_ID |> str_detect("h", negate = T)) |> 
@@ -228,7 +257,8 @@ sample_data(exp) <- exp |> sample_data() |> data.frame() |>
 give.n <- function(x){
    return(c(y = mean(x), label = length(x)))
 }
-exp |> sample_data() |> data.frame() |>
+# pl <- 
+  exp |> sample_data() |> data.frame() |>
   group_by(gel, time) |> mutate(length=n()) |> 
   # filter(time == 0) |> 
   # filter(gel != "h") |> 
@@ -236,15 +266,46 @@ exp |> sample_data() |> data.frame() |>
   geom_boxplot() + 
   geom_jitter() + 
   ggsignif::geom_signif(
-    comparisons = list(c("G", "N")),
+    comparisons = list(c("True", "False")),
     test = "t.test", test.args = list(paired = F),
     step_increase = .1, color = "black", map_signif_level = T) + 
-  facet_wrap(~time, scales = "free_x") + 
+  facet_grid(~time, scales = "free_x", space = "free") + 
   theme_classic() + 
      stat_summary(fun.data = give.n, geom = "text", color = "black", 
                   position = position_dodge(width = 0.05))
   # geom_text(aes(x = gel, y = 1, label = paste0("N=", length))
   #           , color = "black", alpha = 1/6)
+
+# plotly::ggplotly(pl)
+```
+
+### Summary statistics
+```{r, warning=FALSE, message=F, echo=FALSE}
+exp |> sample_data() |> data.frame() |>
+  group_by(gel, time) |> summarise(median = median(faith_pd), sd = sd(faith_pd)) |> gt()
+
+
+# exp |> sample_data() |> data.frame() |>
+#   filter(sample_ID |>  str_detect("h", negate = T)) |> filter(pnid != "MGV11") |>
+#   pivot_wider(id_cols = c(pnid, time), names_from = gel, values_from = faith_pd) |>
+#   group_by(time) |> filter(!is.na(False)) |> filter(!is.na(True)) |>
+#   summarise(pval      = t.test(True, False, paired = T)$p.value,
+#             statistic = t.test(True, False, paired = T)$statistic
+#             , mean = mean(c(True, False))
+#             , sd = sd(c(True, False)))
+
+
+exp |> sample_data() |> data.frame() |> 
+  filter(sample_ID |>  str_detect("h", negate = T)) |> filter(pnid != "MGV11") |>
+  pivot_wider(id_cols = c(pnid, gel), names_from = time, values_from = faith_pd) |>
+  group_by(gel) |> filter(!is.na(`0`)) |> filter(!is.na(`5`)) |>  
+  summarise(pval      = t.test(`0`, `5`, paired = T)$p.value,
+            statistic = t.test(`0`, `5`, paired = T)$statistic
+            , median = median(c(`0`, `5`))
+            , sd = sd(c(`0`, `5`))) |> gt()
+
+(0.466+0.842)/2
+
 ```
 
 
@@ -257,11 +318,11 @@ pairs <- exp |> sample_data() |> data.frame() |> filter(gel != "h") |>
   # rstatix::t_test(reads_number ~ gel, paired = T)
 
 pl2 <- pairs |> sample_data() |> data.frame() |> filter(gel != "h") |>
-  ggpaired(x = "gel", y = "faith_pd", order = c("N", "G"),
+  ggpaired(x = "gel", y = "faith_pd", order = c("False", "True"),
             color = "gel", linetype = 2, palette = "aaas") +
   facet_wrap(~time)
 
-gridExtra::grid.arrange(pl2, tt, nrow = 2, heights = c(80,20))
+# gridExtra::grid.arrange(pl2, tt, nrow = 2, heights = c(80,20))
 ```
 
 ## PCoA - unweighted unifrac
@@ -369,7 +430,7 @@ knitr::include_graphics("figure.png")
 # reticulate::conda_update()
 ```
 
-```{bash}
+```{bash, include = F, eval = F}
 /home/rstudio/anaconda3/envs/seker/bin/python recreate_some_heatmaps.py
 ```
 
@@ -437,15 +498,24 @@ knitr::include_graphics("fig3.png")
 
 
 ```{r, tbl.width ="180%"}
+
+word_wrap <- function(word, n = 31){substring(word,seq(1,nchar(word),n),seq(30,nchar(word), n)) |> paste0(collapse = "\n")}
+
 exp@otu_table |> data.frame() |> 
-  rownames_to_column("ASV") |>
+  rownames_to_column("ASV") |> 
   pivot_longer(-ASV) |> 
   left_join(taxonomy |> rename(ASV = Feature.ID)) |> 
   left_join(ord |> cbind(clustered) |> rownames_to_column("name")) |> 
+  mutate(ASV = lapply(ASV, word_wrap) |> unlist()) |> 
   group_by(clustered) |> 
-  summarise(ASV = ASV, Taxon = Taxon, RA = value/sum(value)) |> 
+  summarise(Taxon = Taxon, RA = value/sum(value), ASV = ASV, ) |> 
   arrange(desc(RA)) |> slice_head(n = 5) |> ungroup() |> distinct(ASV, .keep_all = T) |> 
-  gt::gt(rowname_col = F) |> fmt_percent(columns = RA, decimals = 2)
+  gt::gt(rowname_col = F) |> 
+  fmt_percent(columns = RA, decimals = 2) |> 
+  cols_width(ASV ~ px(400)
+             , clustered ~ px(75)
+             , everything() ~ px(120))
+
 ```
 
 

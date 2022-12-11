@@ -16,8 +16,8 @@ exp = exp.sort_by_metadata("gel")
 exp = exp.sort_by_metadata("pnid")
 exp.sample_metadata.pnid = exp.sample_metadata.pnid.str.replace("MGV","")
 exp.sample_metadata["Database"] = exp.sample_metadata._sample_id.str[2:4]
-pl = exp.plot(barx_fields = ["gel","time", "pnid"], gui = "cli")
-pl.save_figure("figure.png")
+pl = exp.plot(barx_fields = ["time", "pnid"], gui = "cli")
+pl.save_figure("figure.png", dpi = 200)
 # %%
 exp = exp.sort_by_metadata("clustered")
 pl = exp.plot(barx_fields = ["clustered", "pnid", "time"], gui = "cli")
@@ -25,16 +25,18 @@ pl.save_figure("cluster.png")
 # %%
 exp = exp.sort_by_metadata("gel")
 pl = exp.plot(barx_fields = ["gel","time", "pnid"], gui = "cli")
-pl.save_figure("fig1.png")
+pl.save_figure("fig1.png", dpi = 200)
 
 # %%
 exp = exp.sort_by_metadata("Database")
 exp = exp.sort_by_metadata("pnid")
 pl = exp.plot(barx_fields = ["Database", "pnid"], gui = "cli")
-pl.save_figure("fig2.png")
+pl.save_figure("fig2.png", dpi = 200)
 
 # %%
 dif = exp.diff_abundance(field = "gel", val1 = ["G", "N"],val2 = "h", random_seed = int(5782), alpha = .5)
 dif = dif.sort_by_metadata("gel")
 pl = dif.plot(barx_fields = ["gel","time", "pnid"], gui = "cli")
-pl.save_figure("fig3.png")
+pl.save_figure("fig3.png", dpi = 200)
+
+# %%
